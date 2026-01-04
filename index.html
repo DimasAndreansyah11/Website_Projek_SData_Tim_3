@@ -1,0 +1,993 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Curiosity - Streaming</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap');
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #141414;
+            color: #ffffff;
+            overflow-x: hidden;
+        }
+
+        /* Netflix-like Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #141414; 
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #333; 
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #e50914; 
+        }
+
+        .netflix-red { color: #E50914; }
+        .bg-netflix-red { background-color: #E50914; }
+        .btn-netflix {
+            background-color: #E50914;
+            color: white;
+            transition: all 0.2s;
+        }
+        .btn-netflix:hover { background-color: #b20710; }
+
+        .movie-card {
+            transition: transform 0.3s ease, z-index 0.3s ease;
+            cursor: pointer;
+        }
+        .movie-card:hover {
+            transform: scale(1.1);
+            z-index: 10;
+        }
+
+        /* Modal Transitions */
+        .modal {
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.3s ease;
+        }
+        .modal.active {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .glass-panel {
+            background: rgba(20, 20, 20, 0.95);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+
+        /* Video Player Styles - FIXED */
+        #video-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: black;
+            z-index: 100;
+            /* display: flex; <-- DIHAPUS agar tidak menimpa class .hidden */
+        }
+        .back-button {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            z-index: 101;
+            background: rgba(0,0,0,0.5);
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            color: white;
+            font-weight: bold;
+            transition: background 0.2s;
+        }
+        .back-button:hover {
+            background: white;
+            color: black;
+        }
+    </style>
+</head>
+<body class="antialiased">
+
+    <!-- VIDEO PLAYER OVERLAY (Sekarang menggunakan utility class flex untuk layout) -->
+    <div id="video-overlay" class="hidden flex items-center justify-center">
+        <div class="back-button" onclick="app.closeVideoPlayer()">
+            <i class="fas fa-arrow-left mr-2"></i> Back to Browse
+        </div>
+        <video id="main-player" controls class="w-full h-full object-contain focus:outline-none">
+            Your browser does not support HTML5 video.
+        </video>
+    </div>
+
+    <!-- LOGIN SCREEN -->
+    <div id="login-screen" class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-90 bg-[url('https://assets.nflxext.com/ffe/siteui/vlv3/f841d4c7-10e1-40af-bcae-07a3f8dc141a/f6d7434e-d6de-4185-a6d4-c77a2d08737b/US-en-20220502-popsignuptwoweeks-perspective_alpha_website_medium.jpg')] bg-cover bg-no-repeat bg-blend-overlay">
+        <div class="glass-panel p-12 rounded-lg max-w-md w-full text-center shadow-2xl">
+            <h1 class="text-5xl font-bold text-red-600 mb-8 tracking-tighter">curiosity.</h1>
+            <form id="login-form" class="space-y-6">
+                <div>
+                    <input type="text" id="username" placeholder="Username (admin/user)" class="w-full p-4 rounded bg-[#333] text-white border-none focus:ring-2 focus:ring-red-600 outline-none transition" required>
+                </div>
+                <div>
+                    <input type="password" id="password" placeholder="Password" class="w-full p-4 rounded bg-[#333] text-white border-none focus:ring-2 focus:ring-red-600 outline-none transition" required>
+                </div>
+                <button type="submit" class="w-full py-4 rounded font-bold text-lg btn-netflix">Sign In</button>
+                <p class="text-gray-400 text-sm mt-4">New to Curiosity? <a href="#" class="text-white hover:underline" onclick="toggleRegister()">Sign up now.</a></p>
+            </form>
+        </div>
+    </div>
+
+    <!-- MAIN APP INTERFACE -->
+    <div id="app-interface" class="hidden min-h-screen flex flex-col">
+        
+        <!-- NAVBAR -->
+        <nav class="fixed top-0 w-full z-40 bg-gradient-to-b from-black to-transparent px-4 py-4 md:px-12 flex justify-between items-center transition duration-500" id="navbar">
+            <div class="flex items-center space-x-8">
+                <h1 class="text-3xl font-bold text-red-600 cursor-pointer" onclick="app.showHome()">curiosity.</h1>
+                <ul class="hidden md:flex space-x-4 text-sm font-medium text-gray-300">
+                    <li class="hover:text-white cursor-pointer transition" onclick="app.showHome()">Home</li>
+                    <li class="hover:text-white cursor-pointer transition" onclick="app.showHistory()">History</li>
+                    <li class="hover:text-white cursor-pointer transition" onclick="app.showWatchlist()">My List</li>
+                    <li class="hover:text-white cursor-pointer transition" onclick="app.showVIP()">Downloads (VIP)</li>
+                    <li class="hover:text-white cursor-pointer transition hidden" id="admin-link" onclick="app.showAdmin()">Admin Panel</li>
+                </ul>
+            </div>
+            <div class="flex items-center space-x-6">
+                <!-- Search using BST -->
+                <div class="relative group">
+                    <i class="fas fa-search text-xl cursor-pointer"></i>
+                    <input type="text" id="bst-search-input" placeholder="Search (BST)..." 
+                           class="absolute right-0 top-[-5px] w-0 group-hover:w-64 focus:w-64 bg-black border border-white px-3 py-1 transition-all duration-300 opacity-0 group-hover:opacity-100 focus:opacity-100 text-white rounded">
+                </div>
+                <div class="relative group cursor-pointer">
+                    <img src="https://upload.wikimedia.org/wikipedia/commons/0/0b/Netflix-avatar.png" alt="User" class="w-8 h-8 rounded">
+                    <div class="absolute right-0 mt-2 w-32 bg-black border border-gray-700 rounded shadow-lg hidden group-hover:block">
+                        <div class="py-2 px-4 hover:bg-gray-800" onclick="app.logout()">Logout</div>
+                    </div>
+                </div>
+            </div>
+        </nav>
+
+        <!-- CONTENT AREA -->
+        <main class="flex-grow pt-20 pb-10">
+            
+            <!-- HOME PAGE -->
+            <div id="view-home">
+                <!-- HERO SECTION -->
+                <div class="relative h-[80vh] w-full bg-[url('https://image.tmdb.org/t/p/original/mCorHovM3s31p2d987i5l8yC12F.jpg')] bg-cover bg-center">
+                    <div class="absolute inset-0 bg-gradient-to-t from-[#141414] via-transparent to-black opacity-90"></div>
+                    <div class="absolute inset-0 bg-gradient-to-r from-[#141414] via-transparent to-transparent opacity-90"></div>
+                    
+                    <div class="absolute bottom-[20%] left-4 md:left-12 max-w-2xl">
+                        <h1 class="text-5xl md:text-7xl font-extrabold mb-4 drop-shadow-lg">DUNE</h1>
+                        <p class="text-lg md:text-xl text-gray-200 mb-6 drop-shadow-md">A noble family becomes embroiled in a war for control over the galaxy's most valuable asset while its heir becomes troubled by visions of a dark future.</p>
+                        <div class="flex space-x-4">
+                            <button class="bg-white text-black px-8 py-3 rounded font-bold text-lg hover:bg-opacity-80 transition flex items-center" onclick="app.playHeroFilm()">
+                                <i class="fas fa-play mr-2"></i> Play
+                            </button>
+                            <button class="bg-gray-500 bg-opacity-50 text-white px-8 py-3 rounded font-bold text-lg hover:bg-opacity-40 transition flex items-center">
+                                <i class="fas fa-info-circle mr-2"></i> More Info
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ROWS -->
+                <div class="px-4 md:px-12 -mt-24 relative z-10 space-y-12">
+                    
+                    <!-- Linked List Row -->
+                    <div>
+                        <h2 class="text-xl font-bold mb-4 text-white hover:text-red-500 transition">New Releases (Linked List)</h2>
+                        <div class="flex space-x-4 overflow-x-auto pb-4 scrollbar-hide" id="row-new-releases">
+                            <!-- JS Generated -->
+                        </div>
+                    </div>
+
+                    <!-- Array/Main Row -->
+                    <div>
+                        <h2 class="text-xl font-bold mb-4 text-white">Trending Now (Array Storage)</h2>
+                        <div class="flex space-x-4 overflow-x-auto pb-4 scrollbar-hide" id="row-trending">
+                            <!-- JS Generated -->
+                        </div>
+                    </div>
+
+                     <!-- Circular Queue Row -->
+                     <div>
+                        <h2 class="text-xl font-bold mb-4 text-white flex items-center gap-2">
+                            Auto-Play Queue (Circular LL) 
+                            <button onclick="app.playQueueNext()" class="text-xs bg-red-600 px-2 py-1 rounded ml-4 hover:bg-red-700">Play Next >></button>
+                        </h2>
+                        <div class="flex space-x-4 overflow-x-auto pb-4 scrollbar-hide" id="row-queue">
+                            <!-- JS Generated -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ADMIN PANEL (Upload Queue & BST View) -->
+            <div id="view-admin" class="hidden px-12 pt-10">
+                <h2 class="text-3xl font-bold mb-6">Admin Panel</h2>
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <!-- Upload Form (Queue Array) -->
+                    <div class="glass-panel p-6 rounded-lg">
+                        <h3 class="text-xl font-bold mb-4 border-b border-gray-600 pb-2">Upload Movie (Queue Array)</h3>
+                        <div class="space-y-4">
+                            <input id="new-title" type="text" placeholder="Title" class="w-full bg-[#333] p-2 rounded text-white">
+                            <input id="new-genre" type="text" placeholder="Genre" class="w-full bg-[#333] p-2 rounded text-white">
+                            <input id="new-img" type="text" placeholder="Poster Image URL (Optional)" class="w-full bg-[#333] p-2 rounded text-white">
+                            
+                            <!-- FILE INPUT FOR LOCAL VIDEO -->
+                            <div class="bg-[#333] p-2 rounded border border-gray-600">
+                                <label class="block text-xs text-gray-400 mb-1 px-2 pt-2">Local Video File (MP4/MKV)</label>
+                                <input id="new-video-file" type="file" accept="video/*" class="w-full text-sm text-gray-300 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-red-600 file:text-white hover:file:bg-red-700 cursor-pointer">
+                                <p class="text-xs text-gray-500 px-2 pb-2 mt-1">File akan diputar langsung dari perangkat Anda (tidak di-upload ke server).</p>
+                            </div>
+
+                            <div class="flex gap-2">
+                                <button onclick="app.addToUploadQueue()" class="flex-1 bg-gray-600 py-2 rounded font-bold hover:bg-gray-500">Enqueue</button>
+                                <button onclick="app.processUploadQueue()" class="flex-1 btn-netflix py-2 rounded font-bold">Process Queue</button>
+                            </div>
+                        </div>
+                        <div id="upload-queue-preview" class="mt-4 text-sm text-gray-400">
+                            Queue Size: 0
+                        </div>
+                    </div>
+
+                    <!-- BST Visualizer (Text) -->
+                    <div class="glass-panel p-6 rounded-lg">
+                        <h3 class="text-xl font-bold mb-4 border-b border-gray-600 pb-2">Catalog Structure (BST In-Order)</h3>
+                        <div id="bst-visualization" class="h-64 overflow-y-auto font-mono text-sm bg-black p-4 rounded text-green-500">
+                            <!-- Tree Content -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- HISTORY VIEW (Doubly Linked List) -->
+            <div id="view-history" class="hidden px-12 pt-10">
+                <div class="flex justify-between items-center mb-6">
+                    <h2 class="text-3xl font-bold">Viewing History</h2>
+                    <button onclick="app.clearHistory()" class="text-gray-400 hover:text-white">Clear All</button>
+                </div>
+                <div id="history-container" class="space-y-4">
+                    <!-- History Items -->
+                </div>
+            </div>
+
+            <!-- WATCHLIST VIEW -->
+            <div id="view-watchlist" class="hidden px-12 pt-10">
+                <div class="flex justify-between items-center mb-6">
+                    <h2 class="text-3xl font-bold">My Watchlist</h2>
+                    <!-- Stack Undo Feature -->
+                    <button onclick="app.undoRemoveWatchlist()" id="btn-undo" class="hidden bg-gray-700 px-4 py-2 rounded hover:bg-gray-600">
+                        <i class="fas fa-undo mr-2"></i> Undo Remove
+                    </button>
+                </div>
+                <div id="watchlist-grid" class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+                    <!-- Grid Items -->
+                </div>
+            </div>
+
+            <!-- VIP DOWNLOADS (Priority Queue) -->
+            <div id="view-vip" class="hidden px-12 pt-10">
+                <h2 class="text-3xl font-bold mb-6">VIP Download Manager</h2>
+                <div class="flex gap-4 mb-6">
+                    <div class="p-4 bg-gray-800 rounded flex-1">
+                        <h4 class="font-bold text-gray-400 text-sm">CURRENT DOWNLOAD</h4>
+                        <div id="current-download" class="text-xl mt-2 text-green-400">Waiting...</div>
+                    </div>
+                    <button onclick="app.processVIPQueue()" class="bg-green-600 px-8 rounded font-bold hover:bg-green-700">
+                        Process Next
+                    </button>
+                </div>
+                <h3 class="text-lg font-bold mb-2 text-gray-400">Queue (Priority DLL)</h3>
+                <div id="vip-list" class="space-y-2">
+                    <!-- Priority Items -->
+                </div>
+            </div>
+
+        </main>
+    </div>
+
+    <!-- TOAST NOTIFICATION -->
+    <div id="toast" class="fixed bottom-10 right-10 bg-white text-black px-6 py-4 rounded shadow-2xl transform translate-y-20 transition-transform duration-300 z-50 font-bold flex items-center">
+        <span id="toast-msg">Notification</span>
+    </div>
+
+    <!-- JAVASCRIPT LOGIC (DATA STRUCTURES 1:1) -->
+    <script>
+        // ==========================================
+        // DATA STRUCTURES (C++ Logic Ported to JS)
+        // ==========================================
+
+        class Film {
+            constructor(id, title, genre, rating, img, videoSrc = null) {
+                this.id = id;
+                this.title = title;
+                this.genre = genre;
+                this.rating = rating;
+                this.img = img || `https://via.placeholder.com/300x450?text=${encodeURIComponent(title)}`;
+                this.videoSrc = videoSrc; // Store the blob URL or video link
+            }
+        }
+
+        // --- 1. NODE CLASSES ---
+        class Node {
+            constructor(data) {
+                this.data = data;
+                this.next = null;
+            }
+        }
+
+        class DoubleNode {
+            constructor(data) {
+                this.data = data;
+                this.next = null;
+                this.prev = null;
+            }
+        }
+
+        class PriorityNode {
+            constructor(data, priority) {
+                this.data = data;
+                this.priority = priority; // 5=High, 1=Low
+                this.next = null;
+                this.prev = null;
+            }
+        }
+
+        class TreeNode {
+            constructor(data) {
+                this.data = data;
+                this.left = null;
+                this.right = null;
+            }
+        }
+
+        // --- 2. LINKED LIST (New Releases) ---
+        class FilmLinkedList {
+            constructor() {
+                this.head = null;
+                this.size = 0;
+            }
+
+            add(film) {
+                const newNode = new Node(film);
+                if (!this.head) {
+                    this.head = newNode;
+                } else {
+                    let current = this.head;
+                    while (current.next) {
+                        current = current.next;
+                    }
+                    current.next = newNode;
+                }
+                this.size++;
+                
+                // Sync with BST
+                if(window.bst) window.bst.insert(film);
+            }
+
+            getAll() {
+                const arr = [];
+                let current = this.head;
+                while (current) {
+                    arr.push(current.data);
+                    current = current.next;
+                }
+                return arr;
+            }
+
+            removeByTitle(title) {
+                if (!this.head) return null;
+                if (this.head.data.title === title) {
+                    const removed = this.head.data;
+                    this.head = this.head.next;
+                    this.size--;
+                    return removed;
+                }
+                let current = this.head;
+                while (current.next && current.next.data.title !== title) {
+                    current = current.next;
+                }
+                if (current.next) {
+                    const removed = current.next.data;
+                    current.next = current.next.next;
+                    this.size--;
+                    return removed;
+                }
+                return null;
+            }
+        }
+
+        // --- 3. BINARY SEARCH TREE (Search & Sort) ---
+        class FilmBST {
+            constructor() {
+                this.root = null;
+            }
+
+            insert(film) {
+                const newNode = new TreeNode(film);
+                if (!this.root) {
+                    this.root = newNode;
+                    return;
+                }
+                let current = this.root;
+                while (true) {
+                    if (film.title < current.data.title) {
+                        if (!current.left) {
+                            current.left = newNode;
+                            return;
+                        }
+                        current = current.left;
+                    } else {
+                        if (!current.right) {
+                            current.right = newNode;
+                            return;
+                        }
+                        current = current.right;
+                    }
+                }
+            }
+
+            search(title) {
+                let current = this.root;
+                while (current) {
+                    if (title.toLowerCase() === current.data.title.toLowerCase()) return current.data;
+                    if (title.toLowerCase() < current.data.title.toLowerCase()) current = current.left;
+                    else current = current.right;
+                }
+                return null;
+            }
+
+            inOrderTraversal(node, result = []) {
+                if (node) {
+                    this.inOrderTraversal(node.left, result);
+                    result.push(node.data);
+                    this.inOrderTraversal(node.right, result);
+                }
+                return result;
+            }
+        }
+
+        // --- 4. CIRCULAR LINKED LIST (Play Queue) ---
+        class CircularQueue {
+            constructor() {
+                this.tail = null;
+                this.currentPlaying = null;
+                this.count = 0;
+            }
+
+            add(film) {
+                const newNode = new Node(film);
+                if (!this.tail) {
+                    this.tail = newNode;
+                    this.tail.next = this.tail; // Point to self
+                    this.currentPlaying = this.tail;
+                } else {
+                    newNode.next = this.tail.next;
+                    this.tail.next = newNode;
+                    this.tail = newNode;
+                }
+                this.count++;
+            }
+
+            getNext() {
+                if (!this.currentPlaying) return null;
+                this.currentPlaying = this.currentPlaying.next;
+                return this.currentPlaying.data;
+            }
+            
+            getAll() {
+                if (!this.tail) return [];
+                const arr = [];
+                let curr = this.tail.next; // Head
+                do {
+                    arr.push(curr.data);
+                    curr = curr.next;
+                } while (curr !== this.tail.next);
+                return arr;
+            }
+        }
+
+        // --- 5. DOUBLY LINKED LIST (History) ---
+        class ViewingHistory {
+            constructor() {
+                this.head = null;
+                this.tail = null;
+                this.size = 0;
+            }
+
+            addToTop(film) {
+                // Remove existing if duplicate logic omitted for brevity, but recommended
+                const newNode = new DoubleNode(film);
+                if (!this.head) {
+                    this.head = this.tail = newNode;
+                } else {
+                    newNode.next = this.head;
+                    this.head.prev = newNode;
+                    this.head = newNode;
+                }
+                this.size++;
+            }
+
+            getAll() {
+                const arr = [];
+                let curr = this.head;
+                while(curr) {
+                    arr.push(curr.data);
+                    curr = curr.next;
+                }
+                return arr;
+            }
+            
+            clear() {
+                this.head = null;
+                this.tail = null;
+                this.size = 0;
+            }
+        }
+
+        // --- 6. PRIORITY QUEUE DLL (VIP Download) ---
+        class PriorityQueueDLL {
+            constructor() {
+                this.head = null;
+                this.tail = null;
+            }
+
+            enqueue(film, priority) {
+                const newNode = new PriorityNode(film, priority);
+                
+                if (!this.head) {
+                    this.head = this.tail = newNode;
+                } else if (priority > this.head.priority) {
+                    newNode.next = this.head;
+                    this.head.prev = newNode;
+                    this.head = newNode;
+                } else {
+                    let current = this.head;
+                    while (current.next && current.next.priority >= priority) {
+                        current = current.next;
+                    }
+                    newNode.next = current.next;
+                    if (current.next) current.next.prev = newNode;
+                    current.next = newNode;
+                    newNode.prev = current;
+                    if (!newNode.next) this.tail = newNode;
+                }
+            }
+
+            dequeue() {
+                if (!this.head) return null;
+                const temp = this.head;
+                this.head = this.head.next;
+                if (this.head) this.head.prev = null;
+                else this.tail = null;
+                return temp.data;
+            }
+
+            getAll() {
+                const arr = [];
+                let curr = this.head;
+                while(curr) {
+                    arr.push({ data: curr.data, priority: curr.priority });
+                    curr = curr.next;
+                }
+                return arr;
+            }
+        }
+
+        // --- 7. STACK (Undo Watchlist) ---
+        class Stack {
+            constructor() {
+                this.items = [];
+            }
+            push(item) { this.items.push(item); }
+            pop() { return this.items.pop(); }
+            isEmpty() { return this.items.length === 0; }
+        }
+
+        // --- 8. QUEUE ARRAY (Upload) ---
+        class UploadQueue {
+            constructor() {
+                this.queue = [];
+                this.max = 5;
+            }
+            enqueue(film) {
+                if (this.queue.length < this.max) {
+                    this.queue.push(film);
+                    return true;
+                }
+                return false;
+            }
+            dequeue() { return this.queue.shift(); }
+            getAll() { return this.queue; }
+        }
+
+
+        // ==========================================
+        // APPLICATION LOGIC (The Glue)
+        // ==========================================
+
+        class App {
+            constructor() {
+                // Initialize Data Structures
+                this.mainArray = []; // Standard Array storage
+                this.linkedList = new FilmLinkedList();
+                this.bst = new FilmBST();
+                this.playQueue = new CircularQueue();
+                this.history = new ViewingHistory();
+                this.vipQueue = new PriorityQueueDLL();
+                this.undoStack = new Stack();
+                this.uploadQueue = new UploadQueue();
+                this.watchlist = new FilmLinkedList(); // Reusing LL for watchlist
+
+                this.user = null; // 'admin' or 'user'
+                this.videoPlayer = document.getElementById('main-player');
+                this.videoOverlay = document.getElementById('video-overlay');
+                
+                // Expose BST to global for sync
+                window.bst = this.bst;
+
+                this.initData();
+                this.setupEventListeners();
+            }
+
+            initData() {
+                // Added a Big Buck Bunny video as sample for "Stranger Things" to demo the player
+                const sampleVideo = "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4";
+
+                const data = [
+                    { t: "Stranger Things", g: "Sci-Fi", r: 8.7, i: "https://image.tmdb.org/t/p/w500/49WJfeN0moxb9IPfGn8AIqMGskD.jpg", v: sampleVideo },
+                    { t: "The Witcher", g: "Fantasy", r: 8.2, i: "https://image.tmdb.org/t/p/w500/7vjaCdMw15FEbXyLQTVa04URsPm.jpg" },
+                    { t: "Breaking Bad", g: "Crime", r: 9.5, i: "https://image.tmdb.org/t/p/w500/ggFHVNu6YYI5L9pCfOacjizRGt.jpg" },
+                    { t: "Inception", g: "Sci-Fi", r: 8.8, i: "https://image.tmdb.org/t/p/w500/9gk7admal4W1146kVD36zC0Inbd.jpg" },
+                    { t: "Parasite", g: "Drama", r: 8.6, i: "https://image.tmdb.org/t/p/w500/7IiTTgloJzvGI1TAYymCfbfl3vT.jpg" }
+                ];
+
+                // Add to Array & BST
+                data.forEach((d, idx) => {
+                    const f = new Film(idx, d.t, d.g, d.r, d.i, d.v);
+                    this.mainArray.push(f);
+                    this.bst.insert(f);
+                });
+
+                // Add to Linked List (New Releases)
+                const newData = [
+                    { t: "The Matrix Resurrections", g: "Sci-Fi", r: 6.0, i: "https://image.tmdb.org/t/p/w500/8c4a8kE7PizaGQQnditMmI1xbRp.jpg" },
+                    { t: "Spider-Man: NWH", g: "Action", r: 8.5, i: "https://image.tmdb.org/t/p/w500/1g0dhYtq4irTY1GPXvft6k4GY0d.jpg" }
+                ];
+                newData.forEach((d, idx) => {
+                    const f = new Film(100+idx, d.t, d.g, d.r, d.i);
+                    this.linkedList.add(f);
+                    this.bst.insert(f);
+                });
+
+                // Fill Queue
+                data.slice(0, 3).forEach(d => this.playQueue.add(new Film(99, d.t, d.g, d.r, d.i, d.v)));
+            }
+
+            // --- UI RENDERERS ---
+
+            createCard(film, type) {
+                // Type: 'normal', 'watchlist', 'queue'
+                return `
+                    <div class="movie-card flex-shrink-0 w-48 relative group" onclick="app.playFilm('${film.title}')">
+                        <img src="${film.img}" class="rounded-md w-full h-72 object-cover">
+                        <div class="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-70 transition duration-300 flex flex-col justify-end p-2 opacity-0 group-hover:opacity-100">
+                            <h4 class="font-bold text-sm">${film.title}</h4>
+                            <p class="text-xs text-green-400 mb-2">${film.rating}/10</p>
+                            <div class="flex gap-2 text-xs">
+                                <button onclick="event.stopPropagation(); app.addToWatchlist('${film.title}')" class="bg-gray-600 p-1 rounded hover:bg-white hover:text-black">
+                                    <i class="fas fa-plus"></i>
+                                </button>
+                                <button onclick="event.stopPropagation(); app.requestDownload('${film.title}')" class="bg-gray-600 p-1 rounded hover:bg-white hover:text-black">
+                                    <i class="fas fa-download"></i>
+                                </button>
+                                ${type === 'watchlist' ? 
+                                    `<button onclick="event.stopPropagation(); app.removeFromWatchlist('${film.title}')" class="bg-red-600 p-1 rounded"><i class="fas fa-trash"></i></button>` 
+                                    : ''}
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+
+            renderHome() {
+                // Render Linked List
+                const listContainer = document.getElementById('row-new-releases');
+                listContainer.innerHTML = this.linkedList.getAll().map(f => this.createCard(f, 'normal')).join('');
+
+                // Render Array
+                const trendContainer = document.getElementById('row-trending');
+                trendContainer.innerHTML = this.mainArray.map(f => this.createCard(f, 'normal')).join('');
+
+                // Render Circular Queue
+                const queueContainer = document.getElementById('row-queue');
+                queueContainer.innerHTML = this.playQueue.getAll().map(f => this.createCard(f, 'queue')).join('');
+            }
+
+            renderWatchlist() {
+                const container = document.getElementById('watchlist-grid');
+                const items = this.watchlist.getAll();
+                if(items.length === 0) container.innerHTML = '<p class="text-gray-500 col-span-full">Your watchlist is empty.</p>';
+                else container.innerHTML = items.map(f => this.createCard(f, 'watchlist')).join('');
+                
+                // Toggle Undo Button
+                document.getElementById('btn-undo').classList.toggle('hidden', this.undoStack.isEmpty());
+            }
+
+            renderHistory() {
+                const container = document.getElementById('history-container');
+                const items = this.history.getAll();
+                if(items.length === 0) container.innerHTML = '<p class="text-gray-500">No viewing history.</p>';
+                else {
+                    container.innerHTML = items.map(f => `
+                        <div class="flex items-center bg-[#181818] p-4 rounded hover:bg-[#222]">
+                            <img src="${f.img}" class="w-16 h-10 object-cover rounded mr-4">
+                            <div>
+                                <h4 class="font-bold">${f.title}</h4>
+                                <span class="text-xs text-gray-400">Watched just now</span>
+                            </div>
+                        </div>
+                    `).join('');
+                }
+            }
+
+            renderAdmin() {
+                // BST Visualization
+                const bstContainer = document.getElementById('bst-visualization');
+                const sortedFilms = this.bst.inOrderTraversal(this.bst.root);
+                bstContainer.innerHTML = sortedFilms.map((f, i) => `${i+1}. [${f.genre}] ${f.title}`).join('<br>');
+
+                // Queue Preview
+                document.getElementById('upload-queue-preview').innerText = `Queue Size: ${this.uploadQueue.getAll().length} / 5`;
+            }
+
+            renderVIP() {
+                const container = document.getElementById('vip-list');
+                const items = this.vipQueue.getAll();
+                if(items.length === 0) container.innerHTML = '<p class="text-gray-500">No active downloads.</p>';
+                else {
+                    container.innerHTML = items.map(item => `
+                        <div class="bg-[#181818] p-3 rounded flex justify-between items-center border-l-4 ${item.priority === 5 ? 'border-red-500' : 'border-gray-500'}">
+                            <span>${item.data.title}</span>
+                            <span class="text-xs bg-gray-700 px-2 py-1 rounded">${item.priority === 5 ? 'SUPER VIP' : 'Normal'}</span>
+                        </div>
+                    `).join('');
+                }
+            }
+
+            // --- ACTIONS ---
+
+            login(username) {
+                this.user = username;
+                document.getElementById('login-screen').classList.add('hidden');
+                document.getElementById('app-interface').classList.remove('hidden');
+                
+                if (username === 'admin') {
+                    document.getElementById('admin-link').classList.remove('hidden');
+                }
+                this.renderHome();
+                this.showToast(`Welcome back, ${username}`);
+            }
+
+            logout() {
+                location.reload();
+            }
+
+            playFilm(title) {
+                const film = this.bst.search(title); // Use BST for O(log n) lookup
+                if (film) {
+                    this.history.addToTop(film);
+                    
+                    // Show actual video player
+                    this.videoOverlay.classList.remove('hidden');
+                    
+                    if (film.videoSrc) {
+                        this.videoPlayer.src = film.videoSrc;
+                        this.videoPlayer.play();
+                        this.showToast(`Now Playing: ${film.title}`);
+                    } else {
+                        // Dummy if no video source
+                        this.videoPlayer.src = "";
+                        this.showToast(`Playing ${film.title} (Simulated - No Source)`);
+                        // Simulate playing background black
+                    }
+                }
+            }
+            
+            closeVideoPlayer() {
+                this.videoPlayer.pause();
+                this.videoPlayer.src = "";
+                this.videoOverlay.classList.add('hidden');
+            }
+            
+            playHeroFilm() { 
+                // Using generic trailer for Dune if available, or just sample
+                this.videoOverlay.classList.remove('hidden');
+                this.videoPlayer.src = "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4";
+                this.videoPlayer.play();
+                this.showToast("Playing Feature Film");
+            }
+
+            playQueueNext() {
+                const next = this.playQueue.getNext();
+                if(next) {
+                    this.playFilm(next.title);
+                    this.renderHome(); // Re-render to show rotation
+                }
+            }
+
+            addToWatchlist(title) {
+                const film = this.bst.search(title);
+                if(film) {
+                    // Check duplicate
+                    const existing = this.watchlist.getAll().find(f => f.title === title);
+                    if(!existing) {
+                        this.watchlist.add(film);
+                        this.showToast("Added to My List");
+                    } else {
+                        this.showToast("Already in My List");
+                    }
+                }
+            }
+
+            removeFromWatchlist(title) {
+                const removed = this.watchlist.removeByTitle(title);
+                if(removed) {
+                    this.undoStack.push(removed);
+                    this.renderWatchlist();
+                    this.showToast("Removed from List (Undo Available)");
+                }
+            }
+
+            undoRemoveWatchlist() {
+                const item = this.undoStack.pop();
+                if(item) {
+                    this.watchlist.add(item);
+                    this.renderWatchlist();
+                    this.showToast("Restored " + item.title);
+                }
+            }
+
+            requestDownload(title) {
+                const film = this.bst.search(title);
+                const priority = this.user === 'admin' ? 5 : 1; // Logic: Admin gets VIP
+                this.vipQueue.enqueue(film, priority);
+                this.showToast(`Download queued (Priority: ${priority})`);
+                this.renderVIP();
+            }
+
+            processVIPQueue() {
+                const film = this.vipQueue.dequeue();
+                if(film) {
+                    document.getElementById('current-download').innerText = `Downloading: ${film.title}...`;
+                    setTimeout(() => {
+                        document.getElementById('current-download').innerText = `Completed: ${film.title}`;
+                        this.renderVIP();
+                        // Auto play after download
+                        this.playFilm(film.title);
+                    }, 2000);
+                } else {
+                    document.getElementById('current-download').innerText = "Queue Empty";
+                }
+            }
+
+            addToUploadQueue() {
+                const t = document.getElementById('new-title').value;
+                const g = document.getElementById('new-genre').value;
+                const i = document.getElementById('new-img').value;
+                const fileInput = document.getElementById('new-video-file');
+                
+                if(t && g) {
+                    let videoUrl = null;
+                    // Check if local file is selected
+                    if (fileInput.files.length > 0) {
+                        const file = fileInput.files[0];
+                        videoUrl = URL.createObjectURL(file); // Create local blob URL
+                    }
+
+                    const f = new Film(Date.now(), t, g, 0, i, videoUrl);
+                    
+                    if(this.uploadQueue.enqueue(f)) {
+                        this.showToast("Added to Upload Queue");
+                        this.renderAdmin();
+                        // Clear inputs
+                        document.getElementById('new-title').value = '';
+                        document.getElementById('new-video-file').value = '';
+                    } else {
+                        this.showToast("Upload Queue Full!");
+                    }
+                } else {
+                    this.showToast("Title & Genre required!");
+                }
+            }
+
+            processUploadQueue() {
+                const film = this.uploadQueue.dequeue();
+                if(film) {
+                    this.mainArray.push(film);
+                    this.bst.insert(film);
+                    this.showToast(`Uploaded: ${film.title}`);
+                    this.renderAdmin();
+                    this.renderHome();
+                } else {
+                    this.showToast("Queue Empty");
+                }
+            }
+            
+            clearHistory() {
+                this.history.clear();
+                this.renderHistory();
+                this.showToast("History Cleared");
+            }
+
+            // --- VIEW MANAGERS ---
+            hideAllViews() {
+                ['view-home', 'view-admin', 'view-history', 'view-watchlist', 'view-vip'].forEach(id => {
+                    document.getElementById(id).classList.add('hidden');
+                });
+            }
+
+            showHome() { 
+                this.closeVideoPlayer();
+                this.hideAllViews(); 
+                document.getElementById('view-home').classList.remove('hidden'); 
+                this.renderHome(); 
+            }
+            showAdmin() { this.hideAllViews(); document.getElementById('view-admin').classList.remove('hidden'); this.renderAdmin(); }
+            showHistory() { this.hideAllViews(); document.getElementById('view-history').classList.remove('hidden'); this.renderHistory(); }
+            showWatchlist() { this.hideAllViews(); document.getElementById('view-watchlist').classList.remove('hidden'); this.renderWatchlist(); }
+            showVIP() { this.hideAllViews(); document.getElementById('view-vip').classList.remove('hidden'); this.renderVIP(); }
+
+            showToast(msg) {
+                const t = document.getElementById('toast');
+                const m = document.getElementById('toast-msg');
+                m.innerText = msg;
+                t.classList.remove('translate-y-20');
+                setTimeout(() => t.classList.add('translate-y-20'), 3000);
+            }
+
+            setupEventListeners() {
+                // Search Listener
+                document.getElementById('bst-search-input').addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter') {
+                        const val = e.target.value;
+                        const result = this.bst.search(val);
+                        if(result) {
+                            this.playFilm(result.title);
+                            e.target.value = '';
+                        } else {
+                            this.showToast("Film Not Found in BST");
+                        }
+                    }
+                });
+
+                // Login Form
+                document.getElementById('login-form').addEventListener('submit', (e) => {
+                    e.preventDefault();
+                    this.login(document.getElementById('username').value);
+                });
+            }
+        }
+
+        // Initialize App
+        const app = new App();
+
+        function toggleRegister() {
+            alert("Fitur Registrasi disimulasikan. Silakan login dengan 'admin' atau username bebas.");
+        }
+    </script>
+</body>
+</html>
