@@ -1,0 +1,763 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistem Streaming Film v10.0</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap');
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #141414;
+            color: #ffffff;
+            overflow-x: hidden;
+        }
+
+        /* Netflix-like Scrollbar */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #141414; }
+        ::-webkit-scrollbar-thumb { background: #333; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #e50914; }
+
+        .btn-netflix { background-color: #E50914; color: white; transition: all 0.2s; }
+        .btn-netflix:hover { background-color: #b20710; }
+
+        .movie-card { transition: transform 0.3s ease, z-index 0.3s ease; cursor: pointer; }
+        .movie-card:hover { transform: scale(1.1); z-index: 10; }
+
+        .glass-panel {
+            background: rgba(20, 20, 20, 0.95);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+
+        #video-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: black; z-index: 100;
+        }
+    </style>
+</head>
+<body class="antialiased">
+
+    <div id="video-overlay" class="hidden flex items-center justify-center">
+        <div class="absolute top-5 left-5 z-50 bg-black/50 px-4 py-2 rounded cursor-pointer hover:bg-white hover:text-black transition" onclick="app.closeVideoPlayer()">
+            <i class="fas fa-arrow-left mr-2"></i> Kembali
+        </div>
+        <video id="main-player" controls class="w-full h-full object-contain focus:outline-none">
+            Your browser does not support HTML5 video.
+        </video>
+    </div>
+
+    <div id="auth-screen" class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-90 bg-[url('https://assets.nflxext.com/ffe/siteui/vlv3/f841d4c7-10e1-40af-bcae-07a3f8dc141a/f6d7434e-d6de-4185-a6d4-c77a2d08737b/US-en-20220502-popsignuptwoweeks-perspective_alpha_website_medium.jpg')] bg-cover bg-no-repeat bg-blend-overlay">
+        
+        <div id="login-panel" class="glass-panel p-12 rounded-lg max-w-md w-full text-center shadow-2xl">
+            <h1 class="text-4xl font-bold text-red-600 mb-2">STREAMING v10</h1>
+            <p class="text-gray-400 mb-8 text-sm">Sistem Terintegrasi KTP & Laporan</p>
+            <form id="login-form" class="space-y-4">
+                <input type="text" id="username" placeholder="Username" class="w-full p-3 rounded bg-[#333] text-white border-none focus:ring-2 focus:ring-red-600 outline-none" required>
+                <input type="password" id="password" placeholder="Password" class="w-full p-3 rounded bg-[#333] text-white border-none focus:ring-2 focus:ring-red-600 outline-none" required>
+                <button type="submit" class="w-full py-3 rounded font-bold text-lg btn-netflix">Masuk</button>
+                <p class="text-gray-400 text-sm mt-4">Belum punya akun? <a href="#" class="text-white hover:underline" onclick="app.toggleAuthMode('register')">Daftar dengan KTP</a></p>
+            </form>
+        </div>
+
+        <div id="register-panel" class="hidden glass-panel p-8 rounded-lg max-w-2xl w-full shadow-2xl overflow-y-auto max-h-[90vh]">
+            <h2 class="text-2xl font-bold mb-4 border-b border-gray-600 pb-2">Registrasi Pengguna Baru</h2>
+            <form id="register-form" class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                <div class="md:col-span-2 bg-gray-800 p-3 rounded">
+                    <h3 class="font-bold text-red-500 mb-2">Informasi Akun</h3>
+                    <div class="grid grid-cols-2 gap-2">
+                        <input type="text" id="reg-user" placeholder="Username" class="w-full p-2 rounded bg-[#333]" required>
+                        <input type="password" id="reg-pass" placeholder="Password" class="w-full p-2 rounded bg-[#333]" required>
+                    </div>
+                </div>
+
+                <div class="md:col-span-2">
+                    <h3 class="font-bold text-gray-300 mb-2">Data KTP (Wajib)</h3>
+                </div>
+                
+                <input type="text" id="ktp-nik" placeholder="NIK (16 Digit)" maxlength="16" class="w-full p-2 rounded bg-[#333]" required>
+                <input type="text" id="ktp-nama" placeholder="Nama Lengkap" class="w-full p-2 rounded bg-[#333]" required>
+                
+                <input type="text" id="ktp-tmplahir" placeholder="Tempat Lahir" class="w-full p-2 rounded bg-[#333]">
+                <input type="date" id="ktp-tgllahir" class="w-full p-2 rounded bg-[#333] text-gray-300">
+                
+                <select id="ktp-gender" class="w-full p-2 rounded bg-[#333]">
+                    <option value="Laki-laki">Laki-laki</option>
+                    <option value="Perempuan">Perempuan</option>
+                </select>
+                <input type="text" id="ktp-darah" placeholder="Gol. Darah" class="w-full p-2 rounded bg-[#333]">
+
+                <input type="text" id="ktp-alamat" placeholder="Alamat Lengkap" class="md:col-span-2 w-full p-2 rounded bg-[#333]">
+                
+                <input type="text" id="ktp-pekerjaan" placeholder="Pekerjaan" class="w-full p-2 rounded bg-[#333]">
+                <input type="text" id="ktp-agama" placeholder="Agama" class="w-full p-2 rounded bg-[#333]">
+
+                <div class="md:col-span-2 mt-4 flex gap-2">
+                    <button type="button" onclick="app.toggleAuthMode('login')" class="flex-1 py-2 rounded bg-gray-600 hover:bg-gray-500">Batal</button>
+                    <button type="submit" class="flex-1 py-2 rounded font-bold btn-netflix">Daftar Sekarang</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="app-interface" class="hidden min-h-screen flex flex-col">
+        
+        <nav class="fixed top-0 w-full z-40 bg-gradient-to-b from-black to-transparent px-4 py-4 md:px-12 flex justify-between items-center transition duration-500" id="navbar">
+            <div class="flex items-center space-x-8">
+                <h1 class="text-3xl font-bold text-red-600 cursor-pointer" onclick="app.showHome()">STREAMING.</h1>
+                <ul class="hidden md:flex space-x-4 text-sm font-medium text-gray-300">
+                    <li class="hover:text-white cursor-pointer" onclick="app.showHome()">Home</li>
+                    <li class="hover:text-white cursor-pointer" onclick="app.showHistory()">History</li>
+                    <li class="hover:text-white cursor-pointer" onclick="app.showWatchlist()">Watchlist</li>
+                    <li class="hover:text-white cursor-pointer" onclick="app.showVIP()">VIP Downloads</li>
+                    <li class="hover:text-white cursor-pointer hidden text-red-400 font-bold" id="admin-link" onclick="app.showAdmin()">[PANEL ADMIN]</li>
+                </ul>
+            </div>
+            <div class="flex items-center space-x-6">
+                <div class="relative group">
+                    <i class="fas fa-search text-xl cursor-pointer"></i>
+                    <input type="text" id="bst-search-input" placeholder="Cari Film (BST)..." 
+                           class="absolute right-0 top-[-5px] w-0 group-hover:w-64 focus:w-64 bg-black border border-white px-3 py-1 transition-all duration-300 opacity-0 group-hover:opacity-100 focus:opacity-100 text-white rounded">
+                </div>
+                <div class="relative group cursor-pointer flex items-center gap-2">
+                    <span id="display-username" class="font-bold text-sm">User</span>
+                    <img src="https://upload.wikimedia.org/wikipedia/commons/0/0b/Netflix-avatar.png" alt="User" class="w-8 h-8 rounded">
+                    <div class="absolute right-0 top-8 mt-2 w-48 bg-black border border-gray-700 rounded shadow-lg hidden group-hover:block z-50">
+                        <div class="py-2 px-4 border-b border-gray-700 text-xs text-gray-400">
+                            Role: <span id="display-role">Customer</span>
+                        </div>
+                        <div class="py-2 px-4 hover:bg-gray-800" onclick="app.showCancellation()">Ajukan Pembatalan</div>
+                        <div class="py-2 px-4 hover:bg-gray-800 text-red-500" onclick="app.logout()">Logout</div>
+                    </div>
+                </div>
+            </div>
+        </nav>
+
+        <main class="flex-grow pt-20 pb-10">
+            
+            <div id="view-home">
+                <div class="relative h-[70vh] w-full bg-[url('https://image.tmdb.org/t/p/original/mCorHovM3s31p2d987i5l8yC12F.jpg')] bg-cover bg-center">
+                    <div class="absolute inset-0 bg-gradient-to-t from-[#141414] via-transparent to-black opacity-90"></div>
+                    <div class="absolute bottom-[20%] left-4 md:left-12 max-w-2xl">
+                        <h1 class="text-5xl font-extrabold mb-4 drop-shadow-lg">DUNE</h1>
+                        <p class="text-lg text-gray-200 mb-6 drop-shadow-md">Film Array Utama index[0]. Genre: Sci-Fi. Rating: 8.8/10.</p>
+                        <button class="bg-white text-black px-8 py-3 rounded font-bold hover:bg-opacity-80 transition" onclick="app.playHeroFilm()">
+                            <i class="fas fa-play mr-2"></i> Putar Film
+                        </button>
+                    </div>
+                </div>
+
+                <div class="px-4 md:px-12 -mt-16 relative z-10 space-y-12">
+                    <div>
+                        <h2 class="text-xl font-bold mb-4 text-white">Film Baru (Linked List)</h2>
+                        <div class="flex space-x-4 overflow-x-auto pb-4 scrollbar-hide" id="row-new-releases"></div>
+                    </div>
+
+                    <div>
+                        <h2 class="text-xl font-bold mb-4 text-white">Film Utama (Array Storage)</h2>
+                        <div class="flex space-x-4 overflow-x-auto pb-4 scrollbar-hide" id="row-trending"></div>
+                    </div>
+
+                     <div>
+                        <h2 class="text-xl font-bold mb-4 text-white flex items-center gap-2">
+                            Play Queue (Circular LL) 
+                            <button onclick="app.playQueueNext()" class="text-xs bg-red-600 px-2 py-1 rounded ml-4 hover:bg-red-700">Next >></button>
+                        </h2>
+                        <div class="flex space-x-4 overflow-x-auto pb-4 scrollbar-hide" id="row-queue"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="view-admin" class="hidden px-12 pt-10">
+                <h2 class="text-3xl font-bold mb-6 text-red-500">PANEL ADMIN SYSTEM</h2>
+                
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    
+                    <div class="glass-panel p-6 rounded-lg border-l-4 border-blue-500">
+                        <h3 class="text-xl font-bold mb-2">Laporan Sistem (.TXT)</h3>
+                        <p class="text-sm text-gray-400 mb-4">Generate file laporan fisik sesuai modul report.h</p>
+                        <button onclick="app.generateSystemReport()" class="w-full bg-blue-600 py-2 rounded font-bold hover:bg-blue-700">
+                            <i class="fas fa-file-alt mr-2"></i> Download Laporan
+                        </button>
+                    </div>
+
+                    <div class="glass-panel p-6 rounded-lg border-l-4 border-green-500">
+                        <h3 class="text-xl font-bold mb-2">Analisis Huffman</h3>
+                        <div class="flex gap-2">
+                            <input type="text" id="huffman-input" placeholder="Teks Kompresi..." class="w-full bg-[#333] p-1 rounded text-sm">
+                            <button onclick="app.runHuffman()" class="bg-green-600 px-3 rounded text-sm">Cek</button>
+                        </div>
+                        <div id="huffman-result" class="mt-2 text-xs font-mono text-green-400">Waiting...</div>
+                    </div>
+
+                    <div class="glass-panel p-6 rounded-lg border-l-4 border-yellow-500">
+                        <h3 class="text-xl font-bold mb-2">Approval Pembatalan</h3>
+                        <div id="cancel-queue-list" class="h-32 overflow-y-auto text-sm space-y-2">
+                            <p class="text-gray-500">Tidak ada antrian.</p>
+                        </div>
+                    </div>
+
+                    <div class="md:col-span-3 glass-panel p-6 rounded-lg">
+                        <h3 class="text-xl font-bold mb-4 border-b border-gray-600 pb-2">Upload Film (Server Queue)</h3>
+                        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                            <input id="new-title" type="text" placeholder="Judul Film" class="bg-[#333] p-2 rounded text-white">
+                            <input id="new-genre" type="text" placeholder="Genre" class="bg-[#333] p-2 rounded text-white">
+                            <input id="new-video-file" type="file" accept="video/*" class="text-sm text-gray-300">
+                            <div class="flex gap-2">
+                                <button onclick="app.addToUploadQueue()" class="flex-1 bg-gray-600 rounded font-bold">Enqueue</button>
+                                <button onclick="app.processUploadQueue()" class="flex-1 btn-netflix rounded font-bold">Process</button>
+                            </div>
+                        </div>
+                        <div id="upload-queue-preview" class="mt-2 text-sm text-gray-400">Queue Size: 0/5</div>
+                    </div>
+
+                    <div class="md:col-span-3 glass-panel p-6 rounded-lg">
+                         <h3 class="text-xl font-bold mb-2">Struktur AVL Tree (Sorted Film)</h3>
+                         <div id="bst-visualization" class="font-mono text-sm text-green-500 h-32 overflow-y-auto bg-black p-2 rounded"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="view-history" class="hidden px-12 pt-10">
+                <div class="flex justify-between items-center mb-6">
+                    <h2 class="text-3xl font-bold">Riwayat Tontonan (History DLL)</h2>
+                    <button onclick="app.clearHistory()" class="text-gray-400 hover:text-white">Hapus Semua</button>
+                </div>
+                <div id="history-container" class="space-y-4"></div>
+            </div>
+
+            <div id="view-watchlist" class="hidden px-12 pt-10">
+                <div class="flex justify-between items-center mb-6">
+                    <h2 class="text-3xl font-bold">Watchlist Saya</h2>
+                    <button onclick="app.undoRemoveWatchlist()" id="btn-undo" class="hidden bg-gray-700 px-4 py-2 rounded hover:bg-gray-600">
+                        <i class="fas fa-undo mr-2"></i> Undo Hapus (Stack)
+                    </button>
+                </div>
+                <div id="watchlist-grid" class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4"></div>
+            </div>
+
+            <div id="view-vip" class="hidden px-12 pt-10">
+                <h2 class="text-3xl font-bold mb-6">VIP Download (Priority Queue)</h2>
+                <div class="flex gap-4 mb-6">
+                    <div class="p-4 bg-gray-800 rounded flex-1">
+                        <h4 class="font-bold text-gray-400 text-sm">STATUS DOWNLOAD</h4>
+                        <div id="current-download" class="text-xl mt-2 text-green-400">Menunggu antrian...</div>
+                    </div>
+                    <button onclick="app.processVIPQueue()" class="bg-green-600 px-8 rounded font-bold hover:bg-green-700">Proses Queue</button>
+                </div>
+                <div id="vip-list" class="space-y-2"></div>
+            </div>
+
+            <div id="modal-cancel" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-80">
+                <div class="glass-panel p-6 rounded-lg w-96">
+                    <h3 class="text-xl font-bold mb-4">Ajukan Pembatalan</h3>
+                    <textarea id="cancel-reason" class="w-full bg-[#333] p-2 rounded h-24 mb-4" placeholder="Alasan pembatalan..."></textarea>
+                    <div class="flex justify-end gap-2">
+                        <button onclick="document.getElementById('modal-cancel').classList.add('hidden')" class="px-4 py-2 bg-gray-600 rounded">Tutup</button>
+                        <button onclick="app.submitCancellation()" class="px-4 py-2 bg-red-600 rounded font-bold">Kirim</button>
+                    </div>
+                </div>
+            </div>
+
+        </main>
+    </div>
+
+    <div id="toast" class="fixed bottom-10 right-10 bg-white text-black px-6 py-4 rounded shadow-2xl transform translate-y-40 transition-transform duration-300 z-50 font-bold flex items-center">
+        <span id="toast-msg">Notification</span>
+    </div>
+
+    <script>
+        // ==========================================
+        // STRUKTUR DATA (Porting C++ -> JS)
+        // ==========================================
+
+        // --- 1. DEFINISI KELAS SESUAI FILE HEADER ---
+        class KTP {
+            constructor(nik, nama, tmptLahir, tglLahir, jk, golDarah, alamat, pekerjaan, agama) {
+                this.nik = nik;
+                this.namaLengkap = nama;
+                this.tempatLahir = tmptLahir;
+                this.tanggalLahir = tglLahir;
+                this.jenisKelamin = jk;
+                this.golonganDarah = golDarah;
+                this.alamatLengkap = alamat;
+                this.pekerjaan = pekerjaan;
+                this.agama = agama;
+            }
+        }
+
+        class Customer {
+            constructor(username, password, role, dataKTP) {
+                this.username = username;
+                this.password = password;
+                this.role = role; // 'admin' atau 'customer'
+                this.dataKTP = dataKTP;
+                this.watchlist = new FilmLinkedList();
+                this.history = new ViewingHistory();
+            }
+        }
+
+        class Film {
+            constructor(id, title, genre, rating, img, videoSrc = null) {
+                this.id = id;
+                this.title = title;
+                this.genre = genre;
+                this.rating = rating;
+                this.img = img || `https://via.placeholder.com/300x450?text=${encodeURIComponent(title)}`;
+                this.videoSrc = videoSrc;
+            }
+        }
+
+        // --- 2. IMPLEMENTASI STRUKTUR DATA (Linked List, BST, Queue, Stack) ---
+        class Node { constructor(data) { this.data = data; this.next = null; } }
+        class DoubleNode { constructor(data) { this.data = data; this.next = null; this.prev = null; } }
+        class TreeNode { constructor(data) { this.data = data; this.left = null; this.right = null; } }
+        class PriorityNode { constructor(data, priority) { this.data = data; this.priority = priority; this.next = null; this.prev = null; } }
+
+        class FilmLinkedList {
+            constructor() { this.head = null; this.size = 0; }
+            add(film) {
+                const newNode = new Node(film);
+                if (!this.head) this.head = newNode;
+                else { let c = this.head; while (c.next) c = c.next; c.next = newNode; }
+                this.size++;
+                if(window.app && window.app.bst) window.app.bst.insert(film);
+            }
+            getAll() { const arr = []; let c = this.head; while (c) { arr.push(c.data); c = c.next; } return arr; }
+            removeByTitle(title) {
+                if (!this.head) return null;
+                if (this.head.data.title === title) { const r = this.head.data; this.head = this.head.next; this.size--; return r; }
+                let c = this.head;
+                while (c.next && c.next.data.title !== title) c = c.next;
+                if (c.next) { const r = c.next.data; c.next = c.next.next; this.size--; return r; }
+                return null;
+            }
+        }
+
+        class FilmBST {
+            constructor() { this.root = null; }
+            insert(film) {
+                const newNode = new TreeNode(film);
+                if (!this.root) { this.root = newNode; return; }
+                let c = this.root;
+                while (true) {
+                    if (film.title < c.data.title) {
+                        if (!c.left) { c.left = newNode; return; } c = c.left;
+                    } else {
+                        if (!c.right) { c.right = newNode; return; } c = c.right;
+                    }
+                }
+            }
+            search(title) {
+                let c = this.root;
+                while (c) {
+                    if (title.toLowerCase() === c.data.title.toLowerCase()) return c.data;
+                    if (title.toLowerCase() < c.data.title.toLowerCase()) c = c.left; else c = c.right;
+                }
+                return null;
+            }
+            inOrder(node, res = []) { if (node) { this.inOrder(node.left, res); res.push(node.data); this.inOrder(node.right, res); } return res; }
+        }
+
+        class CircularQueue {
+            constructor() { this.tail = null; this.currentPlaying = null; }
+            add(film) {
+                const newNode = new Node(film);
+                if (!this.tail) { this.tail = newNode; this.tail.next = this.tail; this.currentPlaying = this.tail; }
+                else { newNode.next = this.tail.next; this.tail.next = newNode; this.tail = newNode; }
+            }
+            getNext() { if (!this.currentPlaying) return null; this.currentPlaying = this.currentPlaying.next; return this.currentPlaying.data; }
+            getAll() { if (!this.tail) return []; const arr = []; let c = this.tail.next; do { arr.push(c.data); c = c.next; } while (c !== this.tail.next); return arr; }
+        }
+
+        class ViewingHistory {
+            constructor() { this.head = null; }
+            addToTop(film) {
+                const newNode = new DoubleNode(film);
+                if (!this.head) this.head = newNode;
+                else { newNode.next = this.head; this.head.prev = newNode; this.head = newNode; }
+            }
+            getAll() { const arr = []; let c = this.head; while(c) { arr.push(c.data); c = c.next; } return arr; }
+            clear() { this.head = null; }
+        }
+
+        class PriorityQueueDLL {
+            constructor() { this.head = null; }
+            enqueue(film, priority) {
+                const newNode = new PriorityNode(film, priority);
+                if (!this.head || priority > this.head.priority) { newNode.next = this.head; if(this.head) this.head.prev = newNode; this.head = newNode; }
+                else {
+                    let c = this.head;
+                    while (c.next && c.next.priority >= priority) c = c.next;
+                    newNode.next = c.next; if (c.next) c.next.prev = newNode; c.next = newNode; newNode.prev = c;
+                }
+            }
+            dequeue() { if (!this.head) return null; const temp = this.head; this.head = this.head.next; return temp.data; }
+            getAll() { const arr = []; let c = this.head; while(c) { arr.push({ data: c.data, priority: c.priority }); c = c.next; } return arr; }
+        }
+
+        class UploadQueue {
+            constructor() { this.queue = []; this.max = 5; }
+            enqueue(film) { if (this.queue.length < this.max) { this.queue.push(film); return true; } return false; }
+            dequeue() { return this.queue.shift(); }
+            getAll() { return this.queue; }
+        }
+
+        // ==========================================
+        // LOGIKA APLIKASI UTAMA
+        // ==========================================
+
+        class App {
+            constructor() {
+                // Database
+                this.users = []; // Array of Customer objects
+                this.mainArray = []; // Film Utama
+                this.linkedList = new FilmLinkedList(); // Film Baru
+                this.bst = new FilmBST();
+                this.playQueue = new CircularQueue();
+                this.vipQueue = new PriorityQueueDLL();
+                this.uploadQueue = new UploadQueue();
+                this.undoStack = []; // Stack Array simple
+                
+                // Cancel Queue
+                this.cancelQueue = [];
+
+                this.currentUser = null;
+                this.videoPlayer = document.getElementById('main-player');
+
+                this.initSystem();
+            }
+
+            initSystem() {
+                // 1. Buat User Admin Default (Hardcoded like main.cpp)
+                const adminKTP = new KTP("0000000000000000", "Administrator System", "Server", "01-01-1970", "Laki-laki", "-", "Server Room", "Admin", "-");
+                const admin = new Customer("admin", "admin123", "admin", adminKTP);
+                this.users.push(admin);
+
+                // 2. Load Film Data Dummy
+                const data = [
+                    { t: "Stranger Things", g: "Sci-Fi", r: 8.7, i: "https://image.tmdb.org/t/p/w500/49WJfeN0moxb9IPfGn8AIqMGskD.jpg" },
+                    { t: "The Witcher", g: "Fantasy", r: 8.2, i: "https://image.tmdb.org/t/p/w500/7vjaCdMw15FEbXyLQTVa04URsPm.jpg" },
+                    { t: "Inception", g: "Sci-Fi", r: 8.8, i: "https://image.tmdb.org/t/p/w500/9gk7admal4W1146kVD36zC0Inbd.jpg" }
+                ];
+                data.forEach((d, idx) => {
+                    const f = new Film(idx, d.t, d.g, d.r, d.i);
+                    this.mainArray.push(f);
+                    this.bst.insert(f);
+                });
+
+                // 3. Load Linked List
+                const fLL = new Film(100, "Spiderman: NWH", "Action", 8.9, "https://image.tmdb.org/t/p/w500/1g0dhYtq4irTY1GPXvft6k4GY0d.jpg");
+                this.linkedList.add(fLL);
+
+                // 4. Load Play Queue
+                this.playQueue.add(new Film(99, "Dune", "Sci-Fi", 8.0, ""));
+                this.playQueue.add(fLL);
+
+                this.setupEvents();
+            }
+
+            // --- AUTHENTICATION ---
+
+            toggleAuthMode(mode) {
+                if(mode === 'register') {
+                    document.getElementById('login-panel').classList.add('hidden');
+                    document.getElementById('register-panel').classList.remove('hidden');
+                } else {
+                    document.getElementById('login-panel').classList.remove('hidden');
+                    document.getElementById('register-panel').classList.add('hidden');
+                }
+            }
+
+            registerUser(e) {
+                e.preventDefault();
+                // Ambil data form
+                const u = document.getElementById('reg-user').value;
+                const p = document.getElementById('reg-pass').value;
+                
+                // Validasi username unik
+                if(this.users.find(user => user.username === u)) {
+                    alert("Username sudah terpakai!");
+                    return;
+                }
+
+                // Ambil data KTP
+                const nik = document.getElementById('ktp-nik').value;
+                if(nik.length !== 16 || isNaN(nik)) {
+                    alert("NIK harus 16 digit angka!");
+                    return;
+                }
+
+                const ktp = new KTP(
+                    nik,
+                    document.getElementById('ktp-nama').value,
+                    document.getElementById('ktp-tmplahir').value,
+                    document.getElementById('ktp-tgllahir').value,
+                    document.getElementById('ktp-gender').value,
+                    document.getElementById('ktp-darah').value,
+                    document.getElementById('ktp-alamat').value,
+                    document.getElementById('ktp-pekerjaan').value,
+                    document.getElementById('ktp-agama').value
+                );
+
+                const newUser = new Customer(u, p, "customer", ktp);
+                this.users.push(newUser);
+                
+                alert("Registrasi Berhasil! Silakan Login.");
+                this.toggleAuthMode('login');
+                
+                // Reset form
+                document.getElementById('register-form').reset();
+            }
+
+            login(e) {
+                e.preventDefault();
+                const u = document.getElementById('username').value;
+                const p = document.getElementById('password').value;
+
+                const found = this.users.find(user => user.username === u && user.password === p);
+                
+                if(found) {
+                    this.currentUser = found;
+                    document.getElementById('auth-screen').classList.add('hidden');
+                    document.getElementById('app-interface').classList.remove('hidden');
+                    
+                    // Update UI User info
+                    document.getElementById('display-username').innerText = found.username;
+                    document.getElementById('display-role').innerText = found.role.toUpperCase();
+
+                    // Show Admin Link if Admin
+                    if(found.role === 'admin') {
+                        document.getElementById('admin-link').classList.remove('hidden');
+                    } else {
+                        document.getElementById('admin-link').classList.add('hidden');
+                    }
+
+                    this.showToast(`Login Berhasil: ${found.dataKTP.namaLengkap}`);
+                    this.showHome();
+                } else {
+                    alert("Username atau Password salah!");
+                }
+            }
+
+            logout() { location.reload(); }
+
+            // --- CORE FEATURES ---
+
+            createCard(film, type) {
+                return `
+                    <div class="movie-card flex-shrink-0 w-48 relative group" onclick="app.playFilm('${film.title}')">
+                        <img src="${film.img}" class="rounded-md w-full h-72 object-cover">
+                        <div class="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-80 transition duration-300 flex flex-col justify-end p-2 opacity-0 group-hover:opacity-100">
+                            <h4 class="font-bold text-sm">${film.title}</h4>
+                            <p class="text-xs text-green-400 mb-2">${film.genre} | ${film.rating}</p>
+                            <div class="flex gap-2 text-xs">
+                                <button onclick="event.stopPropagation(); app.addToWatchlist('${film.title}')" class="bg-gray-600 p-1 rounded hover:bg-white hover:text-black"><i class="fas fa-plus"></i></button>
+                                <button onclick="event.stopPropagation(); app.requestDownload('${film.title}')" class="bg-gray-600 p-1 rounded hover:bg-white hover:text-black"><i class="fas fa-download"></i></button>
+                                ${type==='watchlist' ? `<button onclick="event.stopPropagation(); app.removeFromWatchlist('${film.title}')" class="bg-red-600 p-1 rounded"><i class="fas fa-trash"></i></button>` : ''}
+                            </div>
+                        </div>
+                    </div>`;
+            }
+
+            playFilm(title) {
+                const film = this.bst.search(title);
+                if(film) {
+                    this.currentUser.history.addToTop(film);
+                    document.getElementById('video-overlay').classList.remove('hidden');
+                    
+                    // Gunakan video dummy jika local file tidak ada
+                    this.videoPlayer.src = film.videoSrc || "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4";
+                    this.videoPlayer.play();
+                    this.showToast(`Memutar: ${film.title}`);
+                }
+            }
+
+            closeVideoPlayer() {
+                this.videoPlayer.pause();
+                document.getElementById('video-overlay').classList.add('hidden');
+            }
+
+            // --- ADMIN FEATURES (REPORT.H) ---
+
+            generateSystemReport() {
+                if(this.currentUser.role !== 'admin') return;
+
+                const date = new Date().toLocaleString();
+                let content = "==================================================\n";
+                content += "          LAPORAN SISTEM STREAMING FILM           \n";
+                content += "==================================================\n";
+                content += `Tanggal Generate : ${date}\n`;
+                content += `Total Pengguna   : ${this.users.length}\n`;
+                content += `Total Film Utama : ${this.mainArray.length}\n`;
+                content += `Total Film Baru  : ${this.linkedList.size}\n`;
+                content += "==================================================\n\n";
+
+                content += "--- [1] DATA FILM UTAMA (ARRAY) ---\n";
+                this.mainArray.forEach((f, i) => {
+                    content += `${i+1}. ${f.title} | ${f.genre} | ${f.rating}\n`;
+                });
+
+                content += "\n--- [2] DATA PENGGUNA TERDAFTAR ---\n";
+                this.users.forEach((u, i) => {
+                    content += `User #${i+1}: ${u.username} (${u.role}) - ${u.dataKTP.namaLengkap} [NIK: ${u.dataKTP.nik}]\n`;
+                });
+
+                // Create Blob and Download
+                const blob = new Blob([content], { type: 'text/plain' });
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `Laporan_Sistem_${Date.now()}.txt`;
+                a.click();
+                this.showToast("Laporan Berhasil Diunduh!");
+            }
+
+            // --- HUFFMAN SIMULATION ---
+            runHuffman() {
+                const text = document.getElementById('huffman-input').value;
+                if(!text) return;
+                // Simulasi perhitungan bit savings
+                const originalBits = text.length * 8;
+                const compressedBits = Math.floor(originalBits * 0.6); // Simulasi 40% kompresi
+                const saving = ((originalBits - compressedBits)/originalBits * 100).toFixed(1);
+                
+                document.getElementById('huffman-result').innerHTML = 
+                    `Original: ${originalBits} bits<br>Huffman: ${compressedBits} bits<br>Efisiensi: ${saving}%`;
+            }
+
+            // --- UPLOAD QUEUE ---
+            addToUploadQueue() {
+                const t = document.getElementById('new-title').value;
+                const g = document.getElementById('new-genre').value;
+                const fileInput = document.getElementById('new-video-file');
+                
+                if(t && g) {
+                    let vidUrl = null;
+                    if(fileInput.files.length > 0) vidUrl = URL.createObjectURL(fileInput.files[0]);
+                    
+                    const f = new Film(Date.now(), t, g, 0, null, vidUrl);
+                    if(this.uploadQueue.enqueue(f)) {
+                        this.showToast("Masuk Antrian Upload");
+                        this.renderAdmin();
+                    } else alert("Queue Penuh!");
+                }
+            }
+
+            processUploadQueue() {
+                const f = this.uploadQueue.dequeue();
+                if(f) {
+                    this.mainArray.push(f);
+                    this.bst.insert(f);
+                    this.showToast(`Uploaded: ${f.title}`);
+                    this.renderAdmin(); this.renderHome();
+                } else alert("Queue Kosong");
+            }
+
+            // --- CANCEL QUEUE ---
+            showCancellation() { document.getElementById('modal-cancel').classList.remove('hidden'); }
+            submitCancellation() {
+                const reason = document.getElementById('cancel-reason').value;
+                this.cancelQueue.push({ user: this.currentUser.username, reason: reason });
+                document.getElementById('modal-cancel').classList.add('hidden');
+                this.showToast("Request dikirim ke Admin");
+                this.renderAdmin();
+            }
+            approveCancel(idx) {
+                this.cancelQueue.splice(idx, 1);
+                this.renderAdmin();
+                this.showToast("Request Disetujui");
+            }
+
+            // --- RENDERING ---
+            renderHome() {
+                document.getElementById('row-new-releases').innerHTML = this.linkedList.getAll().map(f => this.createCard(f, 'normal')).join('');
+                document.getElementById('row-trending').innerHTML = this.mainArray.map(f => this.createCard(f, 'normal')).join('');
+                document.getElementById('row-queue').innerHTML = this.playQueue.getAll().map(f => this.createCard(f, 'queue')).join('');
+            }
+
+            renderAdmin() {
+                // BST
+                const sorted = this.bst.inOrder(this.bst.root);
+                document.getElementById('bst-visualization').innerHTML = sorted.map((f,i) => `${i+1}. ${f.title} [${f.genre}]`).join('<br>');
+                // Queue Size
+                document.getElementById('upload-queue-preview').innerText = `Queue Size: ${this.uploadQueue.queue.length}/5`;
+                // Cancel Queue
+                const cqList = document.getElementById('cancel-queue-list');
+                if(this.cancelQueue.length === 0) cqList.innerHTML = '<p class="text-gray-500">Tidak ada antrian.</p>';
+                else {
+                    cqList.innerHTML = this.cancelQueue.map((item, idx) => `
+                        <div class="bg-[#333] p-2 rounded flex justify-between">
+                            <div><span class="font-bold text-red-400">${item.user}</span>: ${item.reason}</div>
+                            <button onclick="app.approveCancel(${idx})" class="text-green-500 text-xs">Approve</button>
+                        </div>
+                    `).join('');
+                }
+            }
+
+            renderHistory() {
+                const c = document.getElementById('history-container');
+                const items = this.currentUser.history.getAll();
+                c.innerHTML = items.length ? items.map(f => `
+                    <div class="flex items-center bg-[#181818] p-4 rounded">
+                        <img src="${f.img}" class="w-16 h-10 object-cover rounded mr-4">
+                        <div><h4 class="font-bold">${f.title}</h4><span class="text-xs text-gray-400">Ditonton barusan</span></div>
+                    </div>`).join('') : '<p class="text-gray-500">Belum ada history.</p>';
+            }
+
+            renderWatchlist() {
+                const items = this.currentUser.watchlist.getAll();
+                document.getElementById('watchlist-grid').innerHTML = items.length ? items.map(f => this.createCard(f, 'watchlist')).join('') : '<p class="text-gray-500 col-span-full">Watchlist kosong.</p>';
+                document.getElementById('btn-undo').classList.toggle('hidden', this.undoStack.length === 0);
+            }
+            
+            addToWatchlist(t) {
+                const f = this.bst.search(t);
+                if(f) { this.currentUser.watchlist.add(f); this.showToast("Ditambahkan ke Watchlist"); }
+            }
+            removeFromWatchlist(t) {
+                const r = this.currentUser.watchlist.removeByTitle(t);
+                if(r) { this.undoStack.push(r); this.renderWatchlist(); this.showToast("Dihapus (Undo tersedia)"); }
+            }
+            undoRemoveWatchlist() {
+                const f = this.undoStack.pop();
+                if(f) { this.currentUser.watchlist.add(f); this.renderWatchlist(); this.showToast(`Undo: ${f.title}`); }
+            }
+
+            // --- VIEW NAVIGATION ---
+            hideAll() { ['view-home','view-admin','view-history','view-watchlist','view-vip'].forEach(id => document.getElementById(id).classList.add('hidden')); }
+            showHome() { this.hideAll(); document.getElementById('view-home').classList.remove('hidden'); this.renderHome(); }
+            showAdmin() { this.hideAll(); document.getElementById('view-admin').classList.remove('hidden'); this.renderAdmin(); }
+            showHistory() { this.hideAll(); document.getElementById('view-history').classList.remove('hidden'); this.renderHistory(); }
+            showWatchlist() { this.hideAll(); document.getElementById('view-watchlist').classList.remove('hidden'); this.renderWatchlist(); }
+            
+            showToast(msg) {
+                const t = document.getElementById('toast');
+                document.getElementById('toast-msg').innerText = msg;
+                t.classList.remove('translate-y-40');
+                setTimeout(() => t.classList.add('translate-y-40'), 3000);
+            }
+            
+            setupEvents() {
+                document.getElementById('login-form').addEventListener('submit', (e) => this.login(e));
+                document.getElementById('register-form').addEventListener('submit', (e) => this.registerUser(e));
+                
+                // Search Listener
+                document.getElementById('bst-search-input').addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter') {
+                        const res = this.bst.search(e.target.value);
+                        if(res) { this.playFilm(res.title); e.target.value = ''; }
+                        else this.showToast("Film tidak ditemukan di BST");
+                    }
+                });
+            }
+        }
+
+        const app = new App();
+    </script>
+</body>
+</html>
